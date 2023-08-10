@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "proxy-openvalidator"
+version = "0.1.0"
+description = "proxy server running on validator to accept incoming requests from API server and forward to the network"
+authors = ["salahawk <tylermcguy@gmail.com>"]
+readme = "README.md"
+packages = [{include = "proxy"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.101.0"
+httpx = "^0.24.1"
+bittensor = "^5.3.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
