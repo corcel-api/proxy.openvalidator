@@ -9,8 +9,7 @@ packages = [{include = "proxy"}]
 [tool.poetry.dependencies]
 python = "^3.9"
 fastapi = "^0.101.0"
-httpx = "^0.24.1"
-bittensor = "^5.3.3"
+uvicorn = "^0.23.2"
 
 
 [build-system]

@@ -1,36 +1,62 @@
-from fastapi import FastAPI, Request
-import httpx
+import socket
+import logging
+from fastapi import FastAPI, Request, HTTPException
+from starlette.responses import StreamingResponse
+from threading import Thread
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-from .models import RequestModel, ResponseModel
-from .metagraph import MetagraphSyncer, metagraph_syncers, metagraph_sync_event
-
-print("text: waiting for metagraph synchronization")
-metagraph_sync_event.wait()
-print("text: metagraph synchronization completed")
-
-# initialize variables
-w = bittensor.wallet(name="default")
-metagraph_syncer: MetagraphSyncer = metagraph_syncers[1]
+id_counter = 0
 
 
-@app.post("/proxy/")
-async def proxy_request(request: Request):
-    # api_url = "https://third-party-api-endpoint.com"
+def pipe(src, dst):
+    try:
+        while True:
+            data = src.recv(4096)
+            if not data:
+                break
+            dst.sendall(data)
+    except Exception as e:
+        logger.error(e)
+    finally:
+        src.close()
+        dst.close()
 
-    # Extract original headers
-    headers = dict(request.headers)
 
-    # Filter out headers that might cause issues when forwarding. Adjust as needed.
-    exclude_headers = ["host", "connection"]
-    headers = {k: v for k, v in headers.items() if k.lower() not in exclude_headers}
+@app.post("/{host}:{port}")
+async def proxy(request: Request, host: str, port: int):
+    global id_counter
+    id_counter += 1
+    current_id = id_counter
+    logger.info(f"{current_id} - request for {host}:{port}")
 
-    data = await request.body()
+    if request.method != "CONNECT":
+        logger.info(f"{current_id} - invalid method {request.method}")
+        raise HTTPException(status_code=405, detail="Invalid method")
 
-    async with httpx.AsyncClient() as client:
-        # response = await client.post(api_url, headers=headers, data=data)
-        # TODO: forward requests to the network
-        pass
+    try:
+        server_conn = socket.create_connection((host, port))
+    except Exception as e:
+        logger.error(f"{current_id} - dial failed {e}")
+        raise HTTPException(status_code=503, detail="Dial failed")
 
-    return response.json()
+    client_conn = request.client
+    t1 = Thread(target=pipe, args=(client_conn, server_conn))
+    t2 = Thread(target=pipe, args=(server_conn, client_conn))
+
+    t1.start()
+    t2.start()
+
+    t1.join()
+    t2.join()
+
+    logger.info(f"{current_id} - request done")
+    return StreamingResponse(content=b"")  # Return an empty response
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8888)
