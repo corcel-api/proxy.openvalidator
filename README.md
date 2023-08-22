@@ -68,6 +68,31 @@ The solution is to setup a proxy on the validator side (acting as a gateway betw
     ```
 
 4. Install proxy on validator server
+    ## Proxy written in Python
+    #### Install `poetry`
+    ```bash
+    curl -sSL https://install.python-poetry.org | python3 -
+    export PATH="/root/.local/bin:$PATH"
+    ```
+
+    #### Clone the proxy code from GitHub
+    ```bash
+    git clone https://github.com/BitAPAI/proxy.openvalidator.git
+    ```
+
+    #### Install required dependencies in poetry virtual environment
+    ```bash
+    cd proxy.openvalidator
+    poetry shell
+    poetry install
+    ```
+
+    #### Run proxy
+    ```bash
+    pm2 start python --name proxy -- main.py
+    ```
+
+    ## Proxy written in Go
     #### Install Go
     ```bash
     wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
@@ -77,7 +102,7 @@ The solution is to setup a proxy on the validator side (acting as a gateway betw
 
     #### Clone the proxy code from Github
     ```bash
-    git clone git@github.com:adriansmares/connect.git
+    git clone https://github.com/adriansmares/connect.git
     ```
 
     #### Run proxy code
