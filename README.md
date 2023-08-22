@@ -15,7 +15,7 @@ The solution is to setup a proxy on the validator side (acting as a gateway betw
 - Domain on Cloudflare for the proxy
 - Validator server registered on the network
 - API server serving any kind of API that requires access to the network
-- Proxy that supports `connect` metjhod
+- Proxy that supports `connect` method
 
 
 ## Step-by-step Guide
