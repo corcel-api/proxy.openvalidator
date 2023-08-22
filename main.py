@@ -25,7 +25,7 @@ def pipe(src, dst):
         dst.close()
 
 
-@app.post("/{host}:{port}")
+@app.route("/{host}:{port}", methods=["CONNECT"])
 async def proxy(request: Request, host: str, port: int):
     global id_counter
     id_counter += 1
