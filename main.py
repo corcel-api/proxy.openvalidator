@@ -1,4 +1,8 @@
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 async def handle_client(reader, writer):
@@ -9,6 +13,8 @@ async def handle_client(reader, writer):
     if method == b"CONNECT":
         target_host, target_port = target_host.split(b":")
         target_port = int(target_port)
+
+        logger.info(f"coming request: {target_host}:{target_port}")
 
         try:
             target_reader, target_writer = await asyncio.open_connection(
