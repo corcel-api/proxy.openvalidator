@@ -1,66 +1,53 @@
-import socket
-import logging
 import asyncio
-from fastapi import FastAPI, Request, HTTPException, Response
-
-app = FastAPI()
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-id_counter = 0
 
 
-async def pipe(src, dst):
-    try:
-        while True:
-            data = await src.read(4096)
-            if not data:
-                break
-            dst.write(data)
-            await dst.drain()
-    except Exception as e:
-        logger.error(e)
+async def handle_client(reader, writer):
+    data = await reader.read(4096)
+    first_line = data.split(b"\n")[0]
+    method, target_host, _ = first_line.split(b" ")
 
+    if method == b"CONNECT":
+        target_host, target_port = target_host.split(b":")
+        target_port = int(target_port)
 
-@app.route("/{host}:{port}", methods=["CONNECT"])
-async def proxy(request: Request, host: str, port: int):
-    global id_counter
-    id_counter += 1
-    current_id = id_counter
-    logger.info(f"{current_id} - request for {host}:{port}")
+        try:
+            target_reader, target_writer = await asyncio.open_connection(
+                target_host, target_port
+            )
 
-    try:
-        reader, writer = await asyncio.open_connection(host, port)
-    except Exception as e:
-        logger.error(f"{current_id} - dial failed {e}")
-        raise HTTPException(status_code=503, detail="Dial failed")
+            writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+            await writer.drain()
 
-    client_reader, client_writer = await request.legacy_stream()
+            async def forward(src, dst):
+                while True:
+                    data = await src.read(4096)
+                    if len(data) == 0:
+                        break
+                    dst.write(data)
+                    await dst.drain()
 
-    tasks = [
-        asyncio.create_task(pipe(client_reader, writer)),
-        asyncio.create_task(pipe(reader, client_writer)),
-    ]
-
-    async def cleanup():
-        for task in tasks:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            await asyncio.gather(
+                forward(reader, target_writer), forward(target_reader, writer)
+            )
+        except Exception as e:
+            print(f"Error: {e}")
 
         writer.close()
-        await writer.wait_closed()
-        client_writer.close()
-        await client_writer.wait_closed()
+    else:
+        writer.close()
 
-    request.add_event_handler("shutdown", cleanup)
 
-    return Response(status_code=200)
+async def main():
+    bind_ip = "0.0.0.0"
+    bind_port = 8888
+
+    server = await asyncio.start_server(handle_client, bind_ip, bind_port)
+
+    print(f"[*] Listening on {bind_ip}:{bind_port}")
+
+    async with server:
+        await server.serve_forever()
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    asyncio.run(main())
