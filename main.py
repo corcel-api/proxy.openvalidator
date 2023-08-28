@@ -15,6 +15,8 @@ EXPECTED_PASSWORD_HASH = hashlib.sha512(EXPECTED_PASSWORD.encode()).digest()
 
 
 def parse_basic_auth(auth_str):
+    if not auth_str:
+        return "", "", False
     prefix = b"Basic "
     if not auth_str.startswith(prefix):
         return "", "", False
@@ -45,6 +47,8 @@ async def handle_client(reader, writer):
     print(f"method: {method}")
 
     if method != b"CONNECT":
+        writer.write(b"HTTP/1.1 405 METHOD is not allowed \r\n\r\n")
+        await writer.drain()
         writer.close()
         return
 
@@ -61,7 +65,9 @@ async def handle_client(reader, writer):
         None,
     )
     if not handle_authentication(auth_header):
-        writer.write(b"HTTP/1.1 407 Proxy Authentication Required\r\n\r\n")
+        writer.write(
+            b"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"
+        )
         await writer.drain()
         writer.close()
         return
