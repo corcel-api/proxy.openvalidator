@@ -15,6 +15,8 @@ EXPECTED_PASSWORD_HASH = hashlib.sha512(EXPECTED_PASSWORD.encode()).digest()
 
 
 def parse_basic_auth(auth_str):
+    if not auth_str:
+        return "", "", False
     prefix = b"Basic "
     if not auth_str.startswith(prefix):
         return "", "", False
@@ -42,52 +44,61 @@ async def handle_client(reader, writer):
     first_line = data.split(b"\n")[0]
     method, target_host, _ = first_line.split(b" ")
 
-    if method == b"CONNECT":
-        target_host, target_port = target_host.split(b":")
-        target_port = int(target_port)
+    print(f"method: {method}")
 
-        # Extract the Proxy-Authorization header from the request
-        auth_header = next(
-            (
-                line.split(b": ", 1)[1]
-                for line in data.split(b"\r\n")
-                if line.lower().startswith(b"proxy-authorization: ")
-            ),
-            None,
+    if method != b"CONNECT":
+        writer.write(b"HTTP/1.1 405 METHOD is not allowed \r\n\r\n")
+        await writer.drain()
+        writer.close()
+        return
+
+    target_host, target_port = target_host.split(b":")
+    target_port = int(target_port)
+
+    # Extract the Proxy-Authorization header from the request
+    auth_header = next(
+        (
+            line.split(b": ", 1)[1]
+            for line in data.split(b"\r\n")
+            if line.lower().startswith(b"proxy-authorization: ")
+        ),
+        None,
+    )
+    if not handle_authentication(auth_header):
+        writer.write(
+            b"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"
         )
-        if not handle_authentication(auth_header):
-            writer.write(b"HTTP/1.1 407 Proxy Authentication Required\r\n\r\n")
-            await writer.drain()
-            writer.close()
-            return
-
-        logger.info(f"coming request: {target_host.decode()}:{target_port}")
-
-        try:
-            target_reader, target_writer = await asyncio.open_connection(
-                target_host.decode(), target_port
-            )
-
-            writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-            await writer.drain()
-
-            async def forward(src, dst):
-                while True:
-                    data = await src.read(4096)
-                    if len(data) == 0:
-                        break
-                    dst.write(data)
-                    await dst.drain()
-
-            await asyncio.gather(
-                forward(reader, target_writer), forward(target_reader, writer)
-            )
-        except Exception as e:
-            logger.error(f"Error: {e}")
-
+        await writer.drain()
         writer.close()
-    else:
+        return
+
+    logger.info(f"coming request: {target_host.decode()}:{target_port}")
+
+    target_reader, target_writer = await asyncio.open_connection(
+        target_host.decode(), target_port
+    )
+    try:
+        writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        await writer.drain()
+
+        async def forward(src, dst):
+            while True:
+                data = await src.read(4096)
+                if len(data) == 0:
+                    dst.close()
+                    break
+                dst.write(data)
+                await dst.drain()
+
+        await asyncio.gather(
+            forward(reader, target_writer),
+            forward(target_reader, writer),
+        )
+    except Exception as e:
+        logger.error(f"Error: {e}")
+    finally:
         writer.close()
+        target_writer.close()
 
 
 async def main():
