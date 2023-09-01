@@ -58,7 +58,7 @@ The solution is to setup a proxy on the validator side (acting as a gateway betw
     ```
 
     #### Install `cloudflared`
-    ```basb
+    ```bash
     sudo dpkg -i cloudflared.deb
     ```
 
@@ -69,27 +69,15 @@ The solution is to setup a proxy on the validator side (acting as a gateway betw
 
 4. Install proxy on validator server
     ## Proxy written in Python
-    #### Install `poetry`
-    ```bash
-    curl -sSL https://install.python-poetry.org | python3 -
-    export PATH="/root/.local/bin:$PATH"
-    ```
-
     #### Clone the proxy code from GitHub
     ```bash
     git clone https://github.com/BitAPAI/proxy.openvalidator.git
     ```
 
-    #### Install required dependencies in poetry virtual environment
-    ```bash
-    cd proxy.openvalidator
-    poetry shell
-    poetry install
-    ```
-
     #### Run proxy
     ```bash
-    pm2 start python --name proxy -- main.py
+    cd proxy.openvalidator
+    PROXY_USERNAME=<PROXY_USERNAME> PROXY_PASSWORD=<PROXY_PASSWORD> pm2 start python --name proxy -- main.py
     ```
 
     ## Proxy written in Go
@@ -105,13 +93,13 @@ The solution is to setup a proxy on the validator side (acting as a gateway betw
     git clone https://github.com/adriansmares/connect.git
     ```
 
-    #### Run proxy code
+    #### Run proxy code with username and password
     ```bash
     cd connect
-    pm2 start --name connect go -- run main.go
+    PROXY_USERNAME=<PROXY_USERNAME> PROXY_PASSWORD=<PROXY_PASSWORD> pm2 start --name connect go -- run main.go
     ```
 
 5. Start API server (via `cloudflared`)
 ```bash
-grpc_proxy=http://localhost:8888 pm2 start python --name api -- main.py
+grpc_proxy=http://<PROXY_USERNAME>:<PROXY_PASSWORD>@localhost:8888 pm2 start python --name api -- main.py
 ```
