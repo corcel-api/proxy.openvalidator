@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 import base64
 import hashlib
 import hmac
@@ -12,6 +13,23 @@ EXPECTED_USERNAME = os.getenv("PROXY_USERNAME")
 EXPECTED_PASSWORD = os.getenv("PROXY_PASSWORD")
 EXPECTED_USERNAME_HASH = hashlib.sha512(EXPECTED_USERNAME.encode()).digest()
 EXPECTED_PASSWORD_HASH = hashlib.sha512(EXPECTED_PASSWORD.encode()).digest()
+
+
+def remove_hop_headers(headers):
+    headers = headers.copy()
+    for header in [
+        "Connection",
+        "Keep-Alive",
+        "Proxy-Authenticate",
+        "Proxy-Authorization",
+        "Te",
+        "Trailers",
+        "Transfer-Encoding",
+        "Upgrade",
+    ]:
+        if header in headers:
+            del headers[header]
+    return headers
 
 
 def parse_basic_auth(auth_str):
@@ -46,15 +64,6 @@ async def handle_client(reader, writer):
 
     print(f"method: {method}")
 
-    if method != b"CONNECT":
-        writer.write(b"HTTP/1.1 405 METHOD is not allowed \r\n\r\n")
-        await writer.drain()
-        writer.close()
-        return
-
-    target_host, target_port = target_host.split(b":")
-    target_port = int(target_port)
-
     # Extract the Proxy-Authorization header from the request
     auth_header = next(
         (
@@ -71,6 +80,30 @@ async def handle_client(reader, writer):
         await writer.drain()
         writer.close()
         return
+
+    if method != b"CONNECT":
+        # writer.write(b"HTTP/1.1 405 METHOD is not allowed \r\n\r\n")
+        # await writer.drain()
+        # writer.close()
+        # return
+        # Handle non-CONNECT methods here
+        async with aiohttp.ClientSession() as session:
+            async with session.request(method.decode(), target_host.decode()) as resp:
+                writer.write(f"HTTP/1.1 {resp.status} {resp.reason}\r\n".encode())
+                headers = remove_hop_headers(resp.headers)
+                for header, value in headers.items():
+                    writer.write(f"{header}: {value}\r\n".encode())
+                writer.write(b"\r\n")
+                await writer.drain()
+                body = await resp.read()
+                writer.write(body)
+                await writer.drain()
+
+        writer.close()
+        return
+
+    target_host, target_port = target_host.split(b":")
+    target_port = int(target_port)
 
     logger.info(f"coming request: {target_host.decode()}:{target_port}")
 
