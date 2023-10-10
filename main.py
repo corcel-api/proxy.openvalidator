@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import aiohttp
 import base64
 import hashlib
@@ -13,6 +14,9 @@ EXPECTED_USERNAME = os.getenv("PROXY_USERNAME")
 EXPECTED_PASSWORD = os.getenv("PROXY_PASSWORD")
 EXPECTED_USERNAME_HASH = hashlib.sha512(EXPECTED_USERNAME.encode()).digest()
 EXPECTED_PASSWORD_HASH = hashlib.sha512(EXPECTED_PASSWORD.encode()).digest()
+
+# Create a global counter for request IDs
+request_id_counter = itertools.count()
 
 
 def remove_hop_headers(headers):
@@ -58,12 +62,15 @@ def handle_authentication(auth_header):
 
 
 async def handle_client(reader, writer):
+    request_id = next(request_id_counter)
+    logger.info(f"{request_id}: New request")
+
     data = await reader.read(4096)
     first_line = data.split(b"\n")[0]
     method, target_host, _ = first_line.split(b" ")
 
-    print(f"method: {method}")
-
+    # Check if authentication is required
+    require_auth = EXPECTED_USERNAME is not None and EXPECTED_PASSWORD is not None
     # Extract the Proxy-Authorization header from the request
     auth_header = next(
         (
@@ -73,7 +80,8 @@ async def handle_client(reader, writer):
         ),
         None,
     )
-    if not handle_authentication(auth_header):
+    if require_auth and not handle_authentication(auth_header):
+        logger.info(f"{request_id}: Authentication failed")
         writer.write(
             b"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"
         )
@@ -82,10 +90,6 @@ async def handle_client(reader, writer):
         return
 
     if method != b"CONNECT":
-        # writer.write(b"HTTP/1.1 405 METHOD is not allowed \r\n\r\n")
-        # await writer.drain()
-        # writer.close()
-        # return
         # Handle non-CONNECT methods here
         async with aiohttp.ClientSession() as session:
             async with session.request(method.decode(), target_host.decode()) as resp:
@@ -132,6 +136,12 @@ async def handle_client(reader, writer):
     finally:
         writer.close()
         target_writer.close()
+
+    # After closing the connections, discard any remaining data
+    while await reader.read(4096):
+        pass
+
+    logger.info(f"{request_id}: Request done")
 
 
 async def main():
