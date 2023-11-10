@@ -101,5 +101,5 @@ The solution is to setup a proxy on the validator side (acting as a gateway betw
 
 5. Start API server (via `cloudflared`)
 ```bash
-grpc_proxy=http://<PROXY_USERNAME>:<PROXY_PASSWORD>@localhost:8888 pm2 start python --name api -- main.py
+HTTP_PROXY=http://<PROXY_USERNAME>:<PROXY_PASSWORD>@localhost:8888 pm2 start python --name api -- main.py
 ```
